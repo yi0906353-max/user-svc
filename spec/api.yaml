@@ -1,0 +1,504 @@
+openapi: "3.0.3"
+info:
+  title: MindPilot User Service
+  version: "1.0.0"
+  description: 用户中心——注册登录、资料管理、联系人、JWT 鉴权
+
+servers:
+  - url: http://localhost:3002/api/v1
+    description: 本地开发
+
+paths:
+  # ──────────────────────────── 认证 ────────────────────────────
+  /auth/register:
+    post:
+      summary: 邮箱注册
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, display_name]
+              properties:
+                email:
+                  type: string
+                  format: email
+                password:
+                  type: string
+                  minLength: 8
+                display_name:
+                  type: string
+                  minLength: 2
+      responses:
+        "201":
+          description: 注册成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "409":
+          description: 邮箱已注册
+
+  /auth/login:
+    post:
+      summary: 邮箱密码登录
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        "200":
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponse"
+        "401":
+          description: 邮箱或密码错误
+
+  /auth/refresh:
+    post:
+      summary: 刷新 access token
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refresh_token]
+              properties:
+                refresh_token:
+                  type: string
+      responses:
+        "200":
+          description: 新 token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TokenPair"
+
+  /auth/logout:
+    post:
+      summary: 登出（吊销 refresh token）
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refresh_token:
+                  type: string
+                all_devices:
+                  type: boolean
+                  default: false
+      responses:
+        "204":
+          description: 登出成功
+
+  # ──────────────────────────── 用户资料 ────────────────────────────
+  /users/me:
+    get:
+      summary: 获取当前用户信息
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: 用户信息
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfile"
+    patch:
+      summary: 更新当前用户信息
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                display_name:
+                  type: string
+                avatar_url:
+                  type: string
+                timezone:
+                  type: string
+                locale:
+                  type: string
+      responses:
+        "200":
+          description: 更新成功
+
+  /users/me/profile:
+    get:
+      summary: 获取扩展资料
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserProfileExtended"
+    patch:
+      summary: 更新扩展资料
+      security:
+        - BearerAuth: []
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                bio:
+                  type: string
+                company:
+                  type: string
+                title:
+                  type: string
+                preferences:
+                  type: object
+                onboarding_done:
+                  type: boolean
+      responses:
+        "200":
+          description: 更新成功
+
+  # ──────────────────────────── 联系人 ────────────────────────────
+  /contacts:
+    get:
+      summary: 联系人列表
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          schema:
+            type: string
+        - name: source
+          in: query
+          schema:
+            type: string
+        - name: is_frequent
+          in: query
+          schema:
+            type: boolean
+        - name: cursor
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Contact"
+                  next_cursor:
+                    type: string
+                    nullable: true
+                  total:
+                    type: integer
+    post:
+      summary: 添加联系人
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactCreate"
+      responses:
+        "201":
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+
+  /contacts/{contact_id}:
+    get:
+      summary: 联系人详情
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: contact_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Contact"
+        "404":
+          description: 联系人不存在
+    patch:
+      summary: 更新联系人
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: contact_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactUpdate"
+      responses:
+        "200":
+          description: 更新成功
+    delete:
+      summary: 删除联系人
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: contact_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        "204":
+          description: 删除成功
+
+  /contacts/frequent:
+    get:
+      summary: 常用联系人列表（给 inbox-svc 调用）
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Contact"
+
+  # ──────────────────────────── 内部 API（服务间调用） ────────────────────────────
+  /internal/users/{user_id}/frequent-contacts:
+    get:
+      summary: 查询用户常用联系人（内部 API，inbox-svc 用于优先级打分）
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: email
+          in: query
+          description: 按邮箱精确匹配
+          schema:
+            type: string
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  is_frequent:
+                    type: boolean
+                  contact:
+                    $ref: "#/components/schemas/Contact"
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    AuthResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+          description: access token 有效期（秒）
+        user:
+          $ref: "#/components/schemas/User"
+
+    TokenPair:
+      type: object
+      properties:
+        access_token:
+          type: string
+        refresh_token:
+          type: string
+        expires_in:
+          type: integer
+
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+        display_name:
+          type: string
+        avatar_url:
+          type: string
+          nullable: true
+        status:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+
+    UserProfile:
+      allOf:
+        - $ref: "#/components/schemas/User"
+        - type: object
+          properties:
+            timezone:
+              type: string
+            locale:
+              type: string
+
+    UserProfileExtended:
+      allOf:
+        - $ref: "#/components/schemas/UserProfile"
+        - type: object
+          properties:
+            bio:
+              type: string
+            company:
+              type: string
+            title:
+              type: string
+            preferences:
+              type: object
+            onboarding_done:
+              type: boolean
+
+    Contact:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        phone:
+          type: string
+          nullable: true
+        company:
+          type: string
+          nullable: true
+        title:
+          type: string
+          nullable: true
+        avatar_url:
+          type: string
+          nullable: true
+        source:
+          type: string
+        is_frequent:
+          type: boolean
+        interaction_count:
+          type: integer
+        tags:
+          type: array
+          items:
+            type: string
+        created_at:
+          type: string
+          format: date-time
+
+    ContactCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        company:
+          type: string
+        title:
+          type: string
+        source:
+          type: string
+        source_id:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string
+
+    ContactUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        phone:
+          type: string
+        company:
+          type: string
+        title:
+          type: string
+        tags:
+          type: array
+          items:
+            type: string
+        notes:
+          type: string
